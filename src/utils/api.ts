@@ -1,4 +1,17 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { getHeaders, getJiraBaseUrl } from "./const";
+
+function prepareForClaude(
+  tools: Anthropic.Tool[],
+  messages: Anthropic.MessageParam[],
+) {
+  return {
+    model: "claude-sonnet-4-6",
+    max_tokens: 2048,
+    tools: tools,
+    messages: messages,
+  };
+}
 
 function getClient() {
   return new Anthropic({
@@ -104,10 +117,7 @@ export async function triageJiraRequirement(userPrompt: string) {
   ];
 
   let response = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 2048,
-    tools: tools,
-    messages: messages,
+    ...prepareForClaude(tools, messages),
   });
 
   console.log("\n=== Agent Starting ===");
@@ -135,7 +145,7 @@ export async function triageJiraRequirement(userPrompt: string) {
           ` Input: ${JSON.stringify(toolUseBlock.input, null, 2)}\n `,
         );
 
-        const toolResult = getMockToolResult(
+        const toolResult = await callJiraTool(
           toolUseBlock.name,
           toolUseBlock.input,
         );
@@ -155,10 +165,7 @@ export async function triageJiraRequirement(userPrompt: string) {
 
     // Get next response
     response = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2048,
-      tools: tools,
-      messages: messages,
+      ...prepareForClaude(tools, messages),
     });
   }
 
@@ -174,39 +181,111 @@ export async function triageJiraRequirement(userPrompt: string) {
   return "No response generated";
 }
 
-// Mock tool results (replace with real MCP calls later)
-function getMockToolResult(toolName: string, input: any) {
+async function callJiraTool(toolName: string, input: any) {
   if (toolName === "search_jira_issues") {
+    const url = `${getJiraBaseUrl()}/rest/api/3/issue/search?jql=${encodeURIComponent(input.jql)}&fields=summary,status,assignee,priority`;
+    const res = await fetch(url, { headers: getHeaders() });
+    const data = (await res.json()) as any;
     return {
-      issues: [
-        {
-          key: "POR-1",
-          summary: "Portfolio - set up from git",
-          status: "In Progress",
-        },
-        {
-          key: "POR-3",
-          summary: "Leaf component first",
-          status: "To Do",
-        },
-      ],
+      issues: (data.issues ?? []).map((i: any) => ({
+        key: i.key,
+        summary: i.fields.summary,
+        status: i.fields.status?.name,
+        assignee: i.fields.assignee?.displayName ?? "Unassigned",
+        priority: i.fields.priority?.name,
+      })),
     };
   }
+
   if (toolName === "get_jira_issue") {
+    const url = `${getJiraBaseUrl()}/rest/api/3/issue/${input.issueKey}`;
+    const res = await fetch(url, { headers: getHeaders() });
+    const i = (await res.json()) as any;
     return {
-      key: input.issueKey,
-      summary: "Example issue",
-      description: "This is a mock response",
-      status: "To Do",
+      key: i.key,
+      summary: i.fields.summary,
+      status: i.fields.status?.name,
+      assignee: i.fields.assignee?.displayName ?? "Unassigned",
+      description: i.fields.description?.content?.[0]?.content?.[0]?.text ?? "",
     };
   }
 
   if (toolName === "create_jira_issue") {
-    return {
-      key: "POR-99",
-      summary: input.summary,
-      description: true,
+    const body = {
+      fields: {
+        project: { key: input.project },
+        summary: input.summary,
+        issuetype: { name: input.issueType },
+        ...(input.description && {
+          description: {
+            type: "doc",
+            version: 1,
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: input.description }],
+              },
+            ],
+          },
+        }),
+      },
     };
+    const res = await fetch(`${getJiraBaseUrl()}/rest/api/3/issue`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify(body),
+    });
+    const data = (await res.json()) as any;
+    return { key: data.key, created: true };
   }
+
+  if (toolName === "update_jira_issue") {
+    if (input.comment) {
+      const body = {
+        body: {
+          type: "doc",
+          version: 1,
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: input.comment }],
+            },
+          ],
+        },
+      };
+      await fetch(
+        `${getJiraBaseUrl()}/rest/api/3/issue/${input.issueKey}/comment`,
+        {
+          method: "POST",
+          headers: getHeaders(),
+          body: JSON.stringify(body),
+        },
+      );
+    }
+
+    if (input.status) {
+      const transRes = await fetch(
+        `${getJiraBaseUrl()}/rest/api/3/issue/${input.issueKey}/transitions`,
+        { headers: getHeaders() },
+      );
+      const transData = (await transRes.json()) as any;
+      const transition = transData.transitions?.find(
+        (t: any) => t.name.toLowerCase() === input.status.toLowerCase(),
+      );
+      if (transition) {
+        await fetch(
+          `${getJiraBaseUrl()}/rest/api/3/issue/${input.issueKey}/transitions`,
+          {
+            method: "POST",
+            headers: getHeaders(),
+            body: JSON.stringify({ transition: { id: transition.id } }),
+          },
+        );
+      }
+    }
+
+    return { updated: true, issueKey: input.issueKey };
+  }
+
   return { error: "Unknown tool" };
 }

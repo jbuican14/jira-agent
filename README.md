@@ -6,10 +6,12 @@ You describe what you want to do in plain English — _"I need to upgrade my
 portfolio to React 19, what should I prioritize?"_ — and the agent searches your
 Jira, reasons about existing issues, and proposes (or creates) a roadmap.
 
-> **Status:** the agentic tool-use loop is fully working against **mocked** Jira
-> tools. Wiring the tools to a real Jira instance is the next step (see
-> [Roadmap](#roadmap)). For a deep dive on how the loop works, see
-> [AGENT-EXPLAINED.md](AGENT-EXPLAINED.md).
+> **Status:** fully working against a **live Jira Cloud instance**. The agent
+> searches real issues, creates tickets, and returns a prioritised plan.
+> Cost per run: ~$0.06 (Claude Sonnet 4.6). For a deep dive on how the loop
+> works, see [AGENT-EXPLAINED.md](AGENT-EXPLAINED.md).
+
+![Jira Agent UI](assets/Jira-agent-with-Claude.png)
 
 ## How it works
 
@@ -121,11 +123,20 @@ node --import tsx ./agent.ts
 | `npm run dev`   | Run the Express server and Vite UI concurrently   |
 | `npm run build` | Build the frontend for production (Vite)          |
 
+## What was fixed
+
+| Issue | Fix |
+|---|---|
+| `getMockToolResult()` returning hardcoded data | Replaced with real Jira REST API calls in `callJiraTool()` |
+| `JIRA_BASE_URL` undefined at runtime | `dotenv.config()` was called after ES module imports — fixed by adding `import "dotenv/config"` as the first line in `server.ts` |
+| Vite proxy `502 Bad Gateway` | Proxy target was `http://[::1]:3000` (IPv6) — changed to `http://127.0.0.1:3000` |
+| Jira headers spread into Anthropic SDK call | `...headers` was incorrectly spread into `client.messages.create()` — removed |
+| Wrong email in `.env` | `jbuican19@email.com` corrected to `jbuican19@gmail.com` |
+
 ## Roadmap
 
-- [ ] Replace `getMockToolResult()` with real Jira REST API calls using the
-      `JIRA_*` credentials.
-- [ ] Stream the agent's progress (tool calls + reasoning) to the UI.
+- [x] Replace `getMockToolResult()` with real Jira REST API calls
+- [ ] Stream the agent's progress (tool calls + reasoning) to the UI
 - [ ] Optionally expose the Jira tools over the
       [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) so the
-      same toolset can be reused by other MCP clients.
+      same toolset can be reused by other MCP clients
