@@ -69,6 +69,30 @@ export async function triageJiraRequirement(userPrompt: string) {
         required: ["project", "summary", "issueType"],
       },
     },
+    {
+      name: "update_jira_issue",
+      description:
+        "Update the status or add a comment to an existing Jira issue.",
+      input_schema: {
+        type: "object",
+        properties: {
+          issueKey: {
+            type: "string",
+            description: "The Jira issue key (e.g., POR-1, AI-2)",
+          },
+          comment: {
+            type: "string",
+            description: "Comment to add to the issue",
+          },
+          status: {
+            type: "string",
+            description:
+              "New status to transition to (e.g., 'In Progress', 'Done')",
+          },
+        },
+        required: ["issueKey"],
+      },
+    },
   ];
 
   // Start the agentic loop
