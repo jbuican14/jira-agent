@@ -4,10 +4,13 @@ export default function App() {
   const [prompt, setPrompt] = useState("");
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
+  const [events, setEvents] = useState<string[]>([]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setEvents([]);
+    setResult("");
 
     try {
       const response = await fetch("/api/triage", {
@@ -21,8 +24,33 @@ export default function App() {
         throw new Error(error.error || "Request failed");
       }
 
-      const data = await response.json();
-      setResult(data.result);
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value);
+
+        for (const line of text.split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+
+          const parsed = JSON.parse(line.slice(6));
+
+          if (parsed.type === "tool_call") {
+            setEvents((prev) => [...prev, `🔧 ${parsed.name}`]);
+          }
+
+          if (parsed.type === "result") {
+            setResult(parsed.text);
+          }
+
+          if (parsed.type === "error") {
+            throw new Error(parsed.message);
+          }
+        }
+      }
+      // setResult(data.result);
     } catch (error) {
       setResult(
         `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -74,6 +102,17 @@ export default function App() {
           {loading ? "Planning..." : "Get Plan"}
         </button>
       </form>
+
+      {events.length > 0 && (
+        <div style={{ marginBottom: "20px" }}>
+          <h3>Events:</h3>
+          <ul>
+            {events.map((e, i) => (
+              <li key={i}>{e}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {result && (
         <div

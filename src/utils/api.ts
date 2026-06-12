@@ -19,7 +19,9 @@ function getClient() {
   });
 }
 
-export async function triageJiraRequirement(userPrompt: string) {
+type Emit = (type: string, payload: object) => void;
+
+export async function triageJiraRequirement(userPrompt: string, emit: Emit = () => {}) {
   const client = getClient();
   // Define JIRA MCP tools that Claude can use
   const tools: Anthropic.Tool[] = [
@@ -141,9 +143,8 @@ export async function triageJiraRequirement(userPrompt: string) {
     for (const toolUseBlock of toolUseBlocks) {
       if (toolUseBlock.type === "tool_use") {
         console.log(` 🔧 Claude is using tool: ${toolUseBlock.name} `);
-        console.log(
-          ` Input: ${JSON.stringify(toolUseBlock.input, null, 2)}\n `,
-        );
+        console.log(` Input: ${JSON.stringify(toolUseBlock.input, null, 2)}\n `);
+        emit("tool_call", { name: toolUseBlock.name, input: toolUseBlock.input });
 
         const toolResult = await callJiraTool(
           toolUseBlock.name,
@@ -175,9 +176,11 @@ export async function triageJiraRequirement(userPrompt: string) {
   if (finalResponse && finalResponse.type === "text") {
     console.log("\n=== Agent Result ===\n");
     console.log(`Final Response: ${finalResponse.text}`);
+    emit("result", { text: finalResponse.text });
     return finalResponse.text;
   }
 
+  emit("error", { message: "No response generated" });
   return "No response generated";
 }
 
