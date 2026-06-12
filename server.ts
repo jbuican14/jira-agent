@@ -12,19 +12,28 @@ app.use(cors());
 app.use(express.json());
 
 app.post("/api/triage", async (req, res) => {
-  try {
-    const { prompt } = req.body;
-    if (!prompt) {
-      return res.status(400).json({ error: "Prompt is required" });
-    }
+  const { prompt } = req.body;
 
-    const result = await triageJiraRequirement(prompt);
-    res.json({ result });
+  if (!prompt) {
+    return res.status(400).json({ error: "Prompt is required" });
+  }
+
+  const emit = (type: string, payload: object) => {
+    res.write(`data: ${JSON.stringify({ type, ...payload })}\n\n`);
+  };
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  try {
+    await triageJiraRequirement(prompt, emit);
   } catch (error) {
-    console.error("Error:", error);
-    res.status(500).json({
-      error: error instanceof Error ? error.message : "Unknown error",
+    emit("error", {
+      message: error instanceof Error ? error.message : "Unknown error",
     });
+  } finally {
+    res.end();
   }
 });
 

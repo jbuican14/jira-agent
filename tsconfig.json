@@ -11,7 +11,8 @@
        "strict": false,
        "noEmit": true,
        "isolatedModules": true,
-       "resolveJsonModule": true
+       "resolveJsonModule": true,
+       "types" : ["node", "react", "react-dom"]
      },
-     "include": ["src"]
+     "include": ["src", "*.ts", "*.tsx", "tests"]
 }
