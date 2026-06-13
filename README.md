@@ -40,9 +40,8 @@ The agent exposes four Jira tools to Claude:
 | `create_jira_issue`  | Create a new Task / Story / Bug / Epic             |
 | `update_jira_issue`  | Add a comment or transition an issue's status      |
 
-The loop logic lives in [`src/utils/api.ts`](src/utils/api.ts) and currently
-returns mock data from `getMockToolResult()`. Swapping in real Jira REST calls
-is the only change needed to go live.
+The loop logic lives in [`src/utils/api.ts`](src/utils/api.ts). Each tool call
+hits the real Jira REST API via `callJiraTool()`.
 
 ## Architecture
 
@@ -52,7 +51,7 @@ src/ts/app/                        server.ts             src/utils/api.ts
                                                               │
                                                               ▼
                                                      Anthropic SDK (Claude)
-                                                     + Jira tools (mocked)
+                                                     + Jira REST API (live)
 ```
 
 - **Frontend** — React 19 + Vite. A single page ([`App.tsx`](src/ts/app/components/App.tsx))
@@ -70,6 +69,7 @@ Vite proxies `/api` to the Express server on port 3000 during development.
 - React 19, Vite — UI
 - Express — API server
 - TypeScript, [tsx](https://www.npmjs.com/package/tsx) — runtime
+- Playwright — end-to-end tests
 - dotenv, cors
 
 ## Getting started
@@ -118,10 +118,11 @@ node --import tsx ./agent.ts
 
 ## Scripts
 
-| Script          | Description                                       |
-| --------------- | ------------------------------------------------- |
-| `npm run dev`   | Run the Express server and Vite UI concurrently   |
-| `npm run build` | Build the frontend for production (Vite)          |
+| Script                   | Description                                       |
+| ------------------------ | ------------------------------------------------- |
+| `npm run dev`            | Run the Express server and Vite UI concurrently   |
+| `npm run build`          | Build the frontend for production (Vite)          |
+| `npx playwright test`    | Run end-to-end tests (starts dev server automatically) |
 
 ## What was fixed
 
@@ -136,7 +137,7 @@ node --import tsx ./agent.ts
 ## Roadmap
 
 - [x] Replace `getMockToolResult()` with real Jira REST API calls
-- [ ] Stream the agent's progress (tool calls + reasoning) to the UI
+- [x] Stream the agent's progress (tool calls + reasoning) to the UI
 - [ ] Optionally expose the Jira tools over the
       [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) so the
       same toolset can be reused by other MCP clients
